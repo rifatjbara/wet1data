@@ -3,7 +3,7 @@
 
 Horse::Horse(int horseId, int speed)
         : horseId(horseId), speed(speed), herd(nullptr),
-          leader(), followers(nullptr), visited(false), inHerd(false) {}
+          leader(), followers(nullptr), visited(UNVISITED), inHerd(false) {}
 
 Horse::~Horse() {
     if (followers) {
@@ -53,10 +53,15 @@ void Horse::leadersLinkToFollow(std::weak_ptr<Linker> leadersLink) {
         this->unfollowLeader();
     }
     this->leader = leadersLink;
+    this->leader.lock()->increaseCounter();
+    herd->increaseConnections();
 }
 
 void Horse::unfollowLeader() {
     if (auto currentLeader = leader.lock()) { // Lock the weak_ptr to shared_ptr
+        if(currentLeader->getHorse() != nullptr) {
+            herd->decreaseConnections(1);
+        }
         currentLeader->decreaseCounter();
         if (currentLeader->getCount() == 0) {
             if (auto currentHorse = currentLeader->getHorse()) {
@@ -75,20 +80,21 @@ std::shared_ptr<Linker> Horse::makeLink() {
 }
 
 
-bool Horse::checkIfVisited() const {
-    return visited;
+bool Horse::checkIfVisited(int num) const {
+    return visited == num;
 }
 
-void Horse::markVisited() {
-    visited = true;
+void Horse::markVisited(int num) {
+    visited = num;
 }
 
 void Horse::resetVisited() {
-    visited = false;
+    visited = UNVISITED;
 }
 
 void Horse::leaveHerdProperly() {
     if (followers) {
+        herd->decreaseConnections(followers->getCount());
         followers->resetHorse();
         followers.reset(); // Prevent dangling pointers
     }
