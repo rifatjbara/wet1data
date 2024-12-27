@@ -5,6 +5,7 @@
 
 Plains::Plains() : nonEmptyHerdsTree(), emptyHerdsTree(), horsesTree() {}
 
+
 Plains::~Plains() {
     nonEmptyHerdsTree.clear();
     emptyHerdsTree.clear();
@@ -17,7 +18,6 @@ StatusType Plains::add_herd(int herdId) {
         return StatusType::INVALID_INPUT;
     }
 
-
     if (nonEmptyHerdsTree.find(herdId).status() == StatusType::SUCCESS ||
         emptyHerdsTree.find(herdId).status() == StatusType::SUCCESS) {
         return StatusType::FAILURE;
@@ -26,7 +26,6 @@ StatusType Plains::add_herd(int herdId) {
     try {
 
         std::shared_ptr<Herd> newHerd = std::make_shared<Herd>(herdId);
-
 
         StatusType status = emptyHerdsTree.insert(herdId, newHerd);
         if (status != StatusType::SUCCESS) {
@@ -44,7 +43,6 @@ StatusType Plains::remove_herd(int herdId) {
     if (herdId <= 0) {
         return StatusType::INVALID_INPUT;
     }
-
 
     output_t<std::shared_ptr<Herd>> result = emptyHerdsTree.find(herdId);
     if (result.status() == StatusType::SUCCESS) {
@@ -88,7 +86,6 @@ StatusType Plains::join_herd(int horseId, int herdId) {
         return StatusType::INVALID_INPUT;
     }
 
-
     auto horseResult = horsesTree.find(horseId);
     if (horseResult.status() != StatusType::SUCCESS) {
         return StatusType::FAILURE;
@@ -99,7 +96,6 @@ StatusType Plains::join_herd(int horseId, int herdId) {
     if (horse->isInHerd()) {
         return StatusType::FAILURE;
     }
-
 
     auto herdResult = nonEmptyHerdsTree.find(herdId);
     if (herdResult.status() == StatusType::SUCCESS) {
@@ -112,7 +108,6 @@ StatusType Plains::join_herd(int horseId, int herdId) {
         horse->joinHerd(herd);
         return StatusType::SUCCESS;
     }
-
 
     auto emptyHerdResult = emptyHerdsTree.find(herdId);
     if (emptyHerdResult.status() == StatusType::SUCCESS) {
@@ -138,7 +133,6 @@ StatusType Plains::follow(int horseId, int horseToFollowId) {
         return StatusType::INVALID_INPUT;
     }
 
-
     auto horseResult = horsesTree.find(horseId);
     auto horseToFollowResult = horsesTree.find(horseToFollowId);
 
@@ -149,15 +143,17 @@ StatusType Plains::follow(int horseId, int horseToFollowId) {
     std::shared_ptr<Horse> horse = horseResult.ans();
     std::shared_ptr<Horse> horseToFollow = horseToFollowResult.ans();
 
-
     if (!horse->isSameHerd(*horseToFollow)) {
         return StatusType::FAILURE;
+    }
+
+    if(horse->getLeader() && horse->getLeader()->getID() == horseToFollowId) {
+        return StatusType::SUCCESS;
     }
 
     try {
 
         std::shared_ptr<Linker> leadersLink = horseToFollow->makeLink();
-        horseToFollow->getHerd()->increaseConnections();
         horse->leadersLinkToFollow(leadersLink);
     } catch (std::bad_alloc&) {
         return StatusType::ALLOCATION_ERROR;
@@ -172,7 +168,6 @@ StatusType Plains::leave_herd(int horseId) {
         return StatusType::INVALID_INPUT;
     }
 
-
     auto horseResult = horsesTree.find(horseId);
     if (horseResult.status() != StatusType::SUCCESS) {
         return StatusType::FAILURE;
@@ -180,16 +175,13 @@ StatusType Plains::leave_herd(int horseId) {
 
     std::shared_ptr<Horse> horse = horseResult.ans();
 
-
     if (!horse->isInHerd()) {
         return StatusType::FAILURE;
     }
 
-
     std::shared_ptr<Herd> herd = horse->getHerd();
     try {
         herd->removeHorse(horse);
-
 
         if (herd->getSize() == 0) {
             nonEmptyHerdsTree.remove(herd->getId());
@@ -211,15 +203,12 @@ output_t<int> Plains::get_speed(int horseId) {
         return StatusType::INVALID_INPUT;
     }
 
-
     auto result = horsesTree.find(horseId);
     if (result.status() == StatusType::FAILURE) {
         return StatusType::FAILURE;
     }
 
-
     std::shared_ptr<Horse> horse = result.ans();
-
 
     int speed = horse->getSpeed();
     return output_t<int>(speed);
@@ -253,11 +242,11 @@ output_t<bool> Plains::leads(int horseId, int otherHorseId) {
             return output_t<bool>(true);
         }
 
-        if (current->checkIfVisited()) {
+        if (current->checkIfVisited(VISITED_NOW)) {
             break;
         }
 
-        current->markVisited();
+        current->markVisited(VISITED_NOW);
 
         auto leaderLink = current->getLeaderLink().lock();
         if (!leaderLink) {
@@ -272,8 +261,6 @@ output_t<bool> Plains::leads(int horseId, int otherHorseId) {
 }
 
 
-
-
 output_t<bool> Plains::can_run_together(int herdId) {
     if (herdId <= 0) {
         return StatusType::INVALID_INPUT;
@@ -285,53 +272,49 @@ output_t<bool> Plains::can_run_together(int herdId) {
     }
 
     std::shared_ptr<Herd> herd = result.ans();
-    bool canRunTogether = true;
+    static bool canRunTogether;
+    canRunTogether = true;
 
-    // מציאת שורש העדר
-    std::shared_ptr<Horse> root = nullptr;
-    herd->getHorsesTree().inOrderTraversal([&root](int, std::shared_ptr<Horse> horse) {
-        if (!horse->getLeader()) {
-            if (root) {
-                root = nullptr;
-                return;
-            }
-            root = horse;
-        }
-    });
-
-    if (!root) {
-        return output_t<bool>(false);
+    if(herd->getSize() != herd->getNumOfConnections() + 1) {
+        return output_t<bool> (false);
     }
 
 
-    herd->getHorsesTree().inOrderTraversal([&](int, std::shared_ptr<Horse> horse) {
-        if (!canRunTogether) return;
-
+    herd->getHorsesTree().inOrderTraversal([](int, std::shared_ptr<Horse> horse) {
         std::shared_ptr<Horse> current = horse;
 
-        while (current) {
-            if (current->checkIfVisited()) {
+        if(!horse->checkIfVisited(UNVISITED) || canRunTogether == false) {
+            return;
+        }
+
+        while (current != nullptr && !current->checkIfVisited(ALREADY_VISITED)) {
+            // אם הסוס הנוכחי כבר נבדק, יש בעיה בלוגיקה
+            if (current->checkIfVisited(VISITED_NOW)) {
                 canRunTogether = false;
-                return;
-            }
-
-            current->markVisited();
-
-            if (current == root) {
                 break;
             }
 
-            auto leaderLink = current->getLeaderLink().lock();
-            if (!leaderLink) {
-                canRunTogether = false;
-                return;
-            }
+            // הוספת הסוס הנוכחי לרשימת הסוסים שנבדקו
+            current->markVisited(VISITED_NOW);
+            current = current->getLeader(); // מעבר למנהיג הבא
+        }
 
-            current = leaderLink->getHorse();
+        current = horse;
+        while (current != nullptr && canRunTogether && current->checkIfVisited(VISITED_NOW)) {
+            // הוספת הסוס הנוכחי לרשימת הסוסים שנבדקו
+            current->markVisited(ALREADY_VISITED);
+            current = current->getLeader(); // מעבר למנהיג הבא
         }
     });
 
-    resetAllVisited(herd);
+    herd->getHorsesTree().inOrderTraversal([](int, std::shared_ptr<Horse> horse) {
+        std::shared_ptr<Horse> current = horse;
+        while (current != nullptr && !current->checkIfVisited(UNVISITED)) {
+            // הוספת הסוס הנוכחי לרשימת הסוסים שנבדקו
+            current->resetVisited();
+            current = current->getLeader(); // מעבר למנהיג הבא
+        }
+    });
     return output_t<bool>(canRunTogether);
 }
 
