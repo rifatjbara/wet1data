@@ -8,6 +8,10 @@
 class Herd;
 class Linker;
 
+const static int ALREADY_VISITED = 2;
+const static int VISITED_NOW = 1;
+const static int UNVISITED = 0;
+
 class Horse : public std::enable_shared_from_this<Horse> {
 public:
     Horse(int horseId, int speed);
@@ -24,8 +28,8 @@ public:
     void leadersLinkToFollow(std::weak_ptr<Linker> leadersLink);
     void unfollowLeader();
     std::shared_ptr<Linker> makeLink();
-    bool checkIfVisited() const;
-    void markVisited();
+    bool checkIfVisited(int num) const;
+    void markVisited(int num);
     void resetVisited();
     void leaveHerdProperly();
     std::shared_ptr<Horse> getLeader() const;
@@ -37,6 +41,6 @@ private:
     std::shared_ptr<Herd> herd; // Pointer to the herd
     std::weak_ptr<Linker> leader;    // Leader is weak_ptr to avoid circular dependencies
     std::shared_ptr<Linker> followers; // Followers are shared_ptr for shared ownership
-    bool visited;                    // Used for traversal
+    int visited;                    // Used for traversal
     bool inHerd;
 };
